@@ -1,0 +1,172 @@
+syntax = "proto3";
+
+option go_package = "/pb";
+
+package pb;
+
+service Order{
+  rpc MyMethod(Request) returns (Response);
+  rpc PlaceOrder(PlaceOrderRequest)returns(PlaceOrderResponse){}
+  rpc PaymentVerification(PaymentVerificationRequest)returns(PaymentVerificationResponse){}
+  rpc CancelOrder(CancelOrderRequest)returns(CancelOrderResponse){}
+  rpc OrderHistory(OrderHistoryRequest)returns(OrderHistoryResponse){}
+  rpc OrderReturn(OrderReturnRequest)returns (OrderReturnResponse){}
+  rpc AdminOrderUpdate(AdminOrderUpdateRequest)returns(AdminOrderUpdateResponse){}
+  rpc AdminReturnUpdate(AdminReturnUpdateRequest)returns(AdminReturnUpdateResponse){}
+  rpc AdminRefund(AdminRefundRequest)returns(AdminRefundResponse){}
+  rpc SalesReportByDate(SalesReportByDateRequest)returns(SalesReportByDateResponse){}
+  rpc SalesReportByPeriod(SalesReportByPeriodRequest)returns(SalesReportByPeriodResponse){}
+  rpc SalesReportByCategory(SalesReportByCategoryRequest)returns(SalesReportByCategoryResponse){}
+  rpc SortOrderByStatus(SortOrderByStatusRequest)returns(SortOrderByStatusResponse){}
+}
+
+message Request {
+  string data = 1;
+}
+
+message Response {
+  string result = 1;
+}
+
+
+message PlaceOrderRequest{
+  int32 userid = 1;
+  int32 addressid = 2;
+  string paymentmethod = 3;
+}
+
+message Invoice{
+  int32 orderid = 1;
+  int32 userid  = 2;
+  int32 paymentid = 3;
+  string address = 4;
+  string payment = 5;
+  int32  price   = 6;
+  string status  = 7;
+}
+
+message PlaceOrderResponse{
+  Invoice invoice = 1;
+  string result = 2;
+  string razorid = 3;
+}
+
+
+message PaymentVerificationRequest{
+  string signature = 1;
+  string razorid   = 2;
+  string paymentid = 3;
+}
+
+message PaymentVerificationResponse{
+  string result = 1;
+  Invoice invoice = 2;
+  string paymentid = 3;
+}
+
+message CancelOrderRequest{
+  int32 orderid = 1;
+}
+
+message CancelOrderResponse{
+  string result = 1;
+}
+
+message OrderHistoryRequest{
+  int32 userid = 1;
+  int32 page   = 2;
+  int32 limit  = 3;
+}
+
+message Orders{
+  int32 ID        = 1;          
+	int32 UserID    = 2;       
+	int32 AddressId = 3;    
+	int32 Total     = 4;    
+	string Status   = 5;     
+	string PaymentMethod = 6;
+	string PaymentStatus = 7;
+	string PaymentId     = 8;
+}
+
+message OrderHistoryResponse{
+  repeated Orders order = 1;
+}
+
+message OrderReturnRequest{
+  int32 userid = 1;
+  int32 orderid = 2;
+  string reason = 3;
+  string status = 4;
+}
+
+message OrderReturnResponse{
+  string result = 1;
+}
+
+message AdminOrderUpdateRequest{
+  int32 orderid = 1;
+  string status = 2;
+}
+
+message AdminOrderUpdateResponse{
+  string result = 1;
+}
+
+message AdminReturnUpdateRequest{
+  string status = 1;
+  string refund = 2;
+  int32 returnid = 3;
+}
+
+message AdminReturnUpdateResponse{
+  string result = 1;
+}
+
+message AdminRefundRequest{
+  int32 returnid = 1;
+  int32 orderid  = 2;
+}
+
+message AdminRefundResponse{
+  string result = 1;
+}
+
+message SalesReportByDateRequest{}
+
+message SalesReportByDateResponse{}
+
+message SalesReportByPeriodRequest{
+  string period = 1;
+}
+
+message SalesReportByPeriodResponse{
+  int32 TotalSales       = 1;
+  int32	TotalOrders      = 2;
+	int32 AverageOrder     = 3;
+	string PaymentMethod   = 4; 
+	int32 PaymentMethodCnt = 5;
+}
+
+message SalesReportByCategoryRequest{
+  string category = 1;
+  string period   = 2;
+}
+
+message SalesReportByCategoryResponse{
+  int32 TotalSales       = 1;
+  int32	TotalOrders      = 2;
+	int32 AverageOrder     = 3;
+	string PaymentMethod   = 4; 
+	int32 PaymentMethodCnt = 5;
+}
+
+message SortOrderByStatusRequest{
+  string status = 1;
+  int32  page   = 2;
+  int32  limit  = 3;
+}
+
+message SortOrderByStatusResponse{
+  repeated Orders order = 1;
+}
