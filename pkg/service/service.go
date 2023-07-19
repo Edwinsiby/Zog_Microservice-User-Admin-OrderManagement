@@ -3,12 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	pb "service4/pb"
 	"service4/pkg/entity"
 	repo "service4/pkg/repository"
+	utils "service4/pkg/utils"
 
-	"github.com/gin-gonic/gin"
 	"github.com/razorpay/razorpay-go"
 )
 
@@ -48,7 +49,7 @@ func (s *Order) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (*pb.
 	}
 	return resp, nil
 }
-func ExecutePurchaseRazorPay(userId int, address int, c *gin.Context) (string, int, error) {
+func ExecutePurchaseRazorPay(userId int, address int) (string, int, error) {
 	var orderItems []entity.OrderItem
 	cart, err := repo.GetCartById(userId)
 	if err != nil {
@@ -84,7 +85,7 @@ func ExecutePurchaseRazorPay(userId int, address int, c *gin.Context) (string, i
 		PaymentStatus: "pending",
 		PaymentId:     razorId,
 	}
-	OrderId, err2 := repo.Create(order)
+	OrderId, err2 := repo.CreateOrder(order)
 	if err2 != nil {
 		return "", 0, errors.New("Order placing failed")
 	}
@@ -130,7 +131,7 @@ func ExecutePurchaseCod(userId int, address int) (*entity.Invoice, error) {
 		PaymentStatus: "pending",
 	}
 
-	OrderID, err2 := repo.Create(order)
+	OrderID, err2 := repo.CreateOrder(order)
 	if err2 != nil {
 		return nil, errors.New("Order placing failed")
 	}
@@ -187,22 +188,22 @@ func ExecutePurchaseCod(userId int, address int) (*entity.Invoice, error) {
 }
 
 func (s *Order) PaymentVerification(ctx context.Context, req *pb.PaymentVerificationRequest) (*pb.PaymentVerificationResponse, error) {
-	result, err := repo.GetByRazorId(razorId)
+	result, err := repo.GetByRazorId(req.Razorid)
 	if err != nil {
 		return nil, errors.New("Order not found")
 	}
-	err1 := utils.RazorPaymentVerification(Signature, razorId, paymentId)
-	if err1 != nil {
+	err = utils.RazorPaymentVerification(req.Signature, req.Razorid, req.Paymentid)
+	if err != nil {
 		result.PaymentStatus = "failed"
-		err2 := repo.Update(result)
-		if err2 != nil {
+		err = repo.Update(result)
+		if err != nil {
 			return nil, errors.New("payment updation failed")
 		}
-		return nil, err1
+		return nil, err
 	}
 	result.PaymentStatus = "successful"
-	err3 := ou.orderRepo.Update(result)
-	if err3 != nil {
+	err = repo.Update(result)
+	if err != nil {
 		return nil, errors.New("payment updation failed")
 	}
 	userCart, err := repo.GetByUserID(result.UserID)
@@ -229,8 +230,8 @@ func (s *Order) PaymentVerification(ctx context.Context, req *pb.PaymentVerifica
 	if err != nil {
 		return nil, errors.New("Invoice Creating failed")
 	}
-	err4 := repo.RemoveCartItems(int(userCart.ID))
-	if err4 != nil {
+	err = repo.RemoveCartItems(int(userCart.ID))
+	if err != nil {
 		return nil, errors.New("Delete cart items failed")
 	}
 	userCart = &entity.Cart{
@@ -239,15 +240,45 @@ func (s *Order) PaymentVerification(ctx context.Context, req *pb.PaymentVerifica
 		TicketQuantity:  0,
 		ApparelQuantity: 0,
 	}
-	err5 := repo.UpdateCart(userCart)
-	if err5 != nil {
+	err = repo.UpdateCart(userCart)
+	if err != nil {
 		return nil, errors.New("Updating cart failed")
 	}
-	return invoice, nil
+
+	response := &pb.PaymentVerificationResponse{
+		Result:    "Payment Successful",
+		Paymentid: invoice.PaymentId,
+	}
+	return response, nil
 }
 
 func (s *Order) CancelOrder(ctx context.Context, req *pb.CancelOrderRequest) (*pb.CancelOrderResponse, error) {
-
+	result, err := repo.GetByID(int(req.Orderid))
+	if err != nil {
+		return nil, errors.New("Order not found")
+	}
+	user, err := repo.GetUserByID(result.UserID)
+	if err != nil {
+		return nil, errors.New("User not found")
+	}
+	if result.Status != "pending" && result.Status != "confirmed" {
+		return nil, errors.New("order cancelation failed- cancel time exceeded")
+	}
+	if result.PaymentStatus == "successful" {
+		result.PaymentStatus = "refund"
+		user.Wallet = int(result.Total)
+		err = repo.UpdateUserWallet(user)
+		if err != nil {
+			return nil, errors.New("User wallet updation failed")
+		}
+	}
+	result.Status = "canceled"
+	err1 := repo.Update(result)
+	if err1 != nil {
+		return nil, errors.New("order cancelation failed")
+	}
+	resp := &pb.CancelOrderResponse{Result: "Order Canceled"}
+	return resp, nil
 }
 
 func (s *Order) OrderHistory(ctx context.Context, req *pb.OrderHistoryRequest) (*pb.OrderHistoryResponse, error) {
@@ -279,7 +310,7 @@ func (s *Order) OrderHistory(ctx context.Context, req *pb.OrderHistoryRequest) (
 }
 
 func (s *Order) OrderReturn(ctx context.Context, req *pb.OrderReturnRequest) (*pb.OrderReturnResponse, error) {
-	order, err := repo.GetByID(returnData.OrderId)
+	order, err := repo.GetByID(int(req.Orderid))
 	if err != nil {
 		return nil, errors.New("Order not found")
 	}
@@ -289,26 +320,34 @@ func (s *Order) OrderReturn(ctx context.Context, req *pb.OrderReturnRequest) (*p
 	if err != nil {
 		return nil, errors.New("order updation failed")
 	}
+	returnData := entity.Return{
+		UserId:  int(req.Userid),
+		OrderId: int(req.Orderid),
+		Reason:  req.Reason,
+		Status:  req.Status,
+	}
 	err = repo.CreateReturn(&returnData)
 	if err != nil {
 		return nil, errors.New("return creation failed")
 	}
+	resp := &pb.OrderReturnResponse{Result: "Order return requested"}
 	return resp, nil
 }
 func (s *Order) AdminOrderUpdate(ctx context.Context, req *pb.AdminOrderUpdateRequest) (*pb.AdminOrderUpdateResponse, error) {
-	result, err := repo.GetByID(orderId)
+	result, err := repo.GetByID(int(req.Orderid))
 	if err != nil {
 		return nil, errors.New("Order not found")
 	}
-	result.Status = status
+	result.Status = req.Status
 	err = repo.Update(result)
 	if err != nil {
 		return nil, errors.New("order updation failed")
 	}
+	resp := &pb.AdminOrderUpdateResponse{Result: "Order Status Updated"}
 	return resp, nil
 }
 func (s *Order) AdminReturnUpdate(ctx context.Context, req *pb.AdminReturnUpdateRequest) (*pb.AdminReturnUpdateResponse, error) {
-	result, err := repo.GetReturnByID(returnId)
+	result, err := repo.GetReturnByID(int(req.Returnid))
 	if err != nil {
 		return nil, errors.New("Order not found")
 	}
@@ -316,7 +355,7 @@ func (s *Order) AdminReturnUpdate(ctx context.Context, req *pb.AdminReturnUpdate
 	if err != nil {
 		return nil, errors.New("Order not found")
 	}
-	result.Status = status
+	result.Status = req.Status
 	result.Refund = "wallet"
 	result.TotalPrice = int(order.Total)
 	err = repo.UpdateReturn(result)
@@ -328,10 +367,11 @@ func (s *Order) AdminReturnUpdate(ctx context.Context, req *pb.AdminReturnUpdate
 	if err != nil {
 		return nil, errors.New("order updation failed")
 	}
+	resp := &pb.AdminReturnUpdateResponse{Result: "Order Return Status Updated"}
 	return resp, nil
 }
 func (s *Order) AdminRefund(ctx context.Context, req *pb.AdminRefundRequest) (*pb.AdminRefundResponse, error) {
-	order, err := repo.GetByID(orderId)
+	order, err := repo.GetByID(int(req.Orderid))
 	if err != nil {
 		return nil, errors.New("Order not found")
 	}
@@ -341,7 +381,7 @@ func (s *Order) AdminRefund(ctx context.Context, req *pb.AdminRefundRequest) (*p
 		if err != nil {
 			return nil, errors.New("Return not found")
 		}
-		user, err := repo.GetByID(result.UserId)
+		user, err := repo.GetUserByID(result.UserId)
 		if err != nil {
 			return nil, errors.New("Order not found")
 		}
@@ -357,10 +397,11 @@ func (s *Order) AdminRefund(ctx context.Context, req *pb.AdminRefundRequest) (*p
 		if err != nil {
 			return nil, errors.New("return updation failed")
 		} else {
+			resp := &pb.AdminRefundResponse{Result: "Order Refund Status Updated"}
 			return resp, nil
 		}
 	} else {
-		user, err := repo.GetByID(order.UserID)
+		user, err := repo.GetUserByID(order.UserID)
 		if err != nil {
 			return nil, errors.New("Order not found")
 		}
@@ -377,38 +418,65 @@ func (s *Order) AdminRefund(ctx context.Context, req *pb.AdminRefundRequest) (*p
 		if err1 != nil {
 			return nil, errors.New("order cancelation failed")
 		}
+		resp := &pb.AdminRefundResponse{Result: "Order Refund Status Updated"}
 		return resp, nil
 	}
 }
 func (s *Order) SalesReportByDate(ctx context.Context, req *pb.SalesReportByDateRequest) (*pb.SalesReportByDateResponse, error) {
-	orders, err := repo.GetByDate(startDate, endDate)
-	if err != nil {
-		return nil, errors.New("report fetching failed")
-	}
-	return orders, nil
+	fmt.Println("SalesReposrtBYDate")
+	resp := &pb.SalesReportByDateResponse{}
+	return resp, nil
 }
 func (s *Order) SalesReportByPeriod(ctx context.Context, req *pb.SalesReportByPeriodRequest) (*pb.SalesReportByPeriodResponse, error) {
-	startDate, endDate := utils.CalculatePeriodDates(period)
+	startDate, endDate := utils.CalculatePeriodDates(req.Period)
 
 	orders, err := repo.GetByDate(startDate, endDate)
 	if err != nil {
 		return nil, errors.New("report fetching failed")
 	}
-	return orders, nil
+	response := &pb.SalesReportByPeriodResponse{
+		TotalSales:   int32(orders.TotalSales),
+		TotalOrders:  int32(orders.TotalOrders),
+		AverageOrder: int32(orders.AverageOrder),
+	}
+	return response, nil
 }
 func (s *Order) SalesReportByCategory(ctx context.Context, req *pb.SalesReportByCategoryRequest) (*pb.SalesReportByCategoryResponse, error) {
-	startDate, endDate := utils.CalculatePeriodDates(period)
-	orders, err := repo.GetByCategory(category, startDate, endDate)
+	startDate, endDate := utils.CalculatePeriodDates(req.Period)
+	orders, err := repo.GetByCategory(req.Category, startDate, endDate)
 	if err != nil {
 		return nil, errors.New("report fetching failed")
 	}
-	return orders, nil
+	response := &pb.SalesReportByCategoryResponse{
+		TotalSales:   int32(orders.TotalSales),
+		TotalOrders:  int32(orders.TotalOrders),
+		AverageOrder: int32(orders.AverageOrder),
+	}
+	return response, nil
 }
 func (s *Order) SortOrderByStatus(ctx context.Context, req *pb.SortOrderByStatusRequest) (*pb.SortOrderByStatusResponse, error) {
-	offset := (page - 1) * limit
-	orders, err := repo.GetByStatus(offset, limit, status)
+	offset := (req.Page - 1) * req.Limit
+	orders, err := repo.GetByStatus(int(offset), int(req.Limit), req.Status)
 	if err != nil {
 		return nil, errors.New("report fetching failed")
 	}
-	return orders, nil
+	var pbOrderList []*pb.Orders
+	for _, order := range orders {
+		pbOrder := &pb.Orders{
+			ID:            int32(order.ID),
+			UserID:        int32(order.UserID),
+			AddressId:     int32(order.AddressId),
+			Total:         int32(order.Total),
+			Status:        order.Status,
+			PaymentMethod: order.PaymentMethod,
+			PaymentStatus: order.PaymentStatus,
+			PaymentId:     order.PaymentId,
+		}
+		pbOrderList = append(pbOrderList, pbOrder)
+	}
+
+	response := &pb.SortOrderByStatusResponse{
+		Order: pbOrderList,
+	}
+	return response, nil
 }

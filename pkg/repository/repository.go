@@ -5,6 +5,7 @@ import (
 	"log"
 	"service4/pkg/db"
 	"service4/pkg/entity"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -159,4 +160,197 @@ func RemoveFromWishlist(category string, id, userId int) error {
 		Category:  category,
 	}
 	return DB.Where("user_id=?", userId).Delete(&product).Error
+}
+
+func GetAddressById(addressId int) (*entity.Address, error) {
+	var address entity.Address
+	result := DB.Where(&entity.Address{ID: addressId}).First(&address)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, result.Error
+	}
+	return &address, nil
+}
+
+func CreateOrder(order *entity.Order) (int, error) {
+	if err := DB.Create(order).Error; err != nil {
+		return 0, err
+	}
+	return int(order.ID), nil
+}
+
+func CreateOrderItems(orderItem []entity.OrderItem) error {
+	if err := DB.Create(orderItem).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+func CreateInvoice(invoice *entity.Invoice) (*entity.Invoice, error) {
+	if err := DB.Create(invoice).Error; err != nil {
+		return nil, err
+	}
+	return invoice, nil
+}
+
+func CreateReturn(returnData *entity.Return) error {
+	if err := DB.Create(returnData).Error; err != nil {
+		return err
+	} else {
+		return nil
+	}
+}
+func GetReturnByID(returnId int) (*entity.Return, error) {
+	var returnData entity.Return
+	result := DB.Where("id=?", returnId).First(&returnData)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("Return Data not found")
+		}
+		return nil, errors.New("Return Data not found")
+	}
+	return &returnData, nil
+}
+func GetReturnByOrderID(orderId int) (*entity.Return, error) {
+	var returnData entity.Return
+	result := DB.Where("order_id=?", orderId).First(&returnData)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("Return Data not found")
+		}
+		return nil, errors.New("Return Data not found")
+	}
+	return &returnData, nil
+}
+func UpdateReturn(returnData *entity.Return) error {
+	return DB.Save(&returnData).Error
+}
+
+func UpdateUserWallet(user *entity.User) error {
+	return DB.Save(&user).Error
+}
+
+func DecreaseProductQuantity(product *entity.Inventory) error {
+	existingProduct := &entity.Inventory{}
+	err := DB.Where("product_category = ? AND product_id =?", product.ProductCategory, product.ProductId).First(existingProduct).Error
+	if err != nil {
+		return err
+	}
+	newQuantity := existingProduct.Quantity - product.Quantity
+	err = DB.Model(existingProduct).Update("Quantity", newQuantity).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func RemoveCartItems(cartId int) error {
+	var cartItems entity.CartItem
+	result := DB.Where("cart_id=?", cartId).Delete(&cartItems)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return result.Error
+		}
+		return result.Error
+	}
+	return nil
+}
+
+func GetByRazorId(razorId string) (*entity.Order, error) {
+	var order entity.Order
+	result := DB.Where("payment_id=?", razorId).First(&order)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("Order not found")
+		}
+		return nil, errors.New("Order not found")
+	}
+	return &order, nil
+}
+
+func Update(order *entity.Order) error {
+	return DB.Save(&order).Error
+}
+
+func GetByID(orderId int) (*entity.Order, error) {
+	var order entity.Order
+	result := DB.Where("id=?", orderId).First(&order)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("Order not found")
+		}
+		return nil, errors.New("Order not found")
+	}
+	return &order, nil
+}
+
+func GetUserByID(id int) (*entity.User, error) {
+	var user entity.User
+	result := DB.First(&user, id)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, result.Error
+	}
+	return &user, nil
+}
+
+func GetByDate(startDate, endDate time.Time) (*entity.SalesReport, error) {
+	var Order []entity.Order
+	var report entity.SalesReport
+
+	if err := DB.Model(&Order).Where("created_at BETWEEN ? AND ?", startDate, endDate).Select("SUM(total) as total_sales").Scan(&report).Error; err != nil {
+		return nil, err
+	}
+
+	if err := DB.Model(&Order).Where("created_at BETWEEN ? AND ?", startDate, endDate).Count(&report.TotalOrders).Error; err != nil {
+		return nil, err
+	}
+
+	if err := DB.Model(&Order).Where("created_at BETWEEN ? AND ?", startDate, endDate).Select("AVG(total) as average_order").Scan(&report).Error; err != nil {
+		return nil, err
+	}
+
+	if err := DB.Model(&Order).Where("created_at BETWEEN ? AND ?", startDate, endDate).Select("payment, COUNT(payment) as payment_method_cnt").Group("payment").Scan(&report).Error; err != nil {
+		return nil, err
+	}
+	return &report, nil
+}
+
+func GetByCategory(category string, startDate, endDate time.Time) (*entity.SalesReport, error) {
+	report := &entity.SalesReport{}
+
+	var orderItems []entity.OrderItem
+	if err := DB.Where("category = ? AND created_at BETWEEN ? AND ?", category, startDate, endDate).Find(&orderItems).Error; err != nil {
+		return nil, err
+	}
+
+	totalSales := 0.0
+	totalOrders := int64(len(orderItems))
+
+	for _, item := range orderItems {
+		totalSales += item.Price * float64(item.Quantity)
+
+	}
+
+	report.TotalSales = totalSales
+	report.TotalOrders = totalOrders
+	report.AverageOrder = totalSales / float64(totalOrders)
+
+	return report, nil
+}
+
+func GetByStatus(offset, limit int, status string) ([]entity.Order, error) {
+	var order []entity.Order
+	result := DB.Offset(offset).Limit(limit).Where("status=?", status).Find(&order)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("Order not found")
+		}
+		return nil, errors.New("Order not found")
+	}
+	return order, nil
 }
