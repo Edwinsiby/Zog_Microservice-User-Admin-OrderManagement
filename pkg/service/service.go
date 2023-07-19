@@ -346,6 +346,7 @@ func (s *Order) AdminOrderUpdate(ctx context.Context, req *pb.AdminOrderUpdateRe
 	resp := &pb.AdminOrderUpdateResponse{Result: "Order Status Updated"}
 	return resp, nil
 }
+
 func (s *Order) AdminReturnUpdate(ctx context.Context, req *pb.AdminReturnUpdateRequest) (*pb.AdminReturnUpdateResponse, error) {
 	result, err := repo.GetReturnByID(int(req.Returnid))
 	if err != nil {
@@ -370,6 +371,7 @@ func (s *Order) AdminReturnUpdate(ctx context.Context, req *pb.AdminReturnUpdate
 	resp := &pb.AdminReturnUpdateResponse{Result: "Order Return Status Updated"}
 	return resp, nil
 }
+
 func (s *Order) AdminRefund(ctx context.Context, req *pb.AdminRefundRequest) (*pb.AdminRefundResponse, error) {
 	order, err := repo.GetByID(int(req.Orderid))
 	if err != nil {
@@ -422,11 +424,13 @@ func (s *Order) AdminRefund(ctx context.Context, req *pb.AdminRefundRequest) (*p
 		return resp, nil
 	}
 }
+
 func (s *Order) SalesReportByDate(ctx context.Context, req *pb.SalesReportByDateRequest) (*pb.SalesReportByDateResponse, error) {
 	fmt.Println("SalesReposrtBYDate")
 	resp := &pb.SalesReportByDateResponse{}
 	return resp, nil
 }
+
 func (s *Order) SalesReportByPeriod(ctx context.Context, req *pb.SalesReportByPeriodRequest) (*pb.SalesReportByPeriodResponse, error) {
 	startDate, endDate := utils.CalculatePeriodDates(req.Period)
 
@@ -441,6 +445,7 @@ func (s *Order) SalesReportByPeriod(ctx context.Context, req *pb.SalesReportByPe
 	}
 	return response, nil
 }
+
 func (s *Order) SalesReportByCategory(ctx context.Context, req *pb.SalesReportByCategoryRequest) (*pb.SalesReportByCategoryResponse, error) {
 	startDate, endDate := utils.CalculatePeriodDates(req.Period)
 	orders, err := repo.GetByCategory(req.Category, startDate, endDate)
@@ -454,6 +459,7 @@ func (s *Order) SalesReportByCategory(ctx context.Context, req *pb.SalesReportBy
 	}
 	return response, nil
 }
+
 func (s *Order) SortOrderByStatus(ctx context.Context, req *pb.SortOrderByStatusRequest) (*pb.SortOrderByStatusResponse, error) {
 	offset := (req.Page - 1) * req.Limit
 	orders, err := repo.GetByStatus(int(offset), int(req.Limit), req.Status)
